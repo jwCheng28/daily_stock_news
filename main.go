@@ -3,120 +3,20 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/url"
-	"os"
-	"strings"
     "sync"
 	"time"
-
-	"github.com/gocolly/colly/v2"
-	"gopkg.in/yaml.v3"
 )
 
-type Config struct {
-	Companies []string `yaml:"companies"`
-}
-
-type Article struct {
-    Company     string
-	Title       string
-	URL         string
-	Source      string
-    SourceURL   string
-	PublishedAt time.Time
-}
-
-func loadConfig(path string) (Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return Config{}, err
-	}
-
-	var config Config
-
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return Config{}, err
-	}
-
-	return config, nil
-}
-
-func scrapeGoogleNews(company string) []Article {
-	var articles []Article
-
-	c := colly.NewCollector()
-
-	c.OnXML("//item", func(e *colly.XMLElement) {
-		title := strings.TrimSpace(e.ChildText("title"))
-		link := strings.TrimSpace(e.ChildText("link"))
-		source := strings.TrimSpace(e.ChildText("source"))
-		sourceURL := e.ChildAttr("source", "url")
-		pubDate := strings.TrimSpace(e.ChildText("pubDate"))
-
-		if title == "" || link == "" {
-			return
-		}
-
-		publishedAt, err := time.Parse(time.RFC1123, pubDate)
-		if err != nil {
-			log.Printf(
-				"Failed to parse date %q: %v",
-				pubDate,
-				err,
-			)
-			return
-		}
-
-		articles = append(articles, Article{
-            Company:     company,
-			Title:       title,
-			URL:         link,
-			Source:      source,
-			SourceURL:   sourceURL,
-			PublishedAt: publishedAt,
-		})
-	})
-
-	c.OnError(func(r *colly.Response, err error) {
-		log.Printf(
-			"Request failed: %s: %v",
-			r.Request.URL,
-			err,
-		)
-	})
-
-	queryParam := url.QueryEscape(company)
-
-	rssURL := fmt.Sprintf(
-		"https://news.google.com/rss/search?q=%s&hl=en-US&gl=US&ceid=US:en",
-		queryParam,
-	)
-
-	if err := c.Visit(rssURL); err != nil {
-		log.Printf("Failed to visit Google News: %v", err)
-	}
-
-	return articles
-}
-
-func deduplicateArticles(articles []Article) []Article {
-	seen := make(map[string]struct{})
-
-	result := make([]Article, 0, len(articles))
-
-	for _, article := range articles {
-		if _, exists := seen[article.URL]; exists {
-			continue
-		}
-
-		seen[article.URL] = struct{}{}
-		result = append(result, article)
-	}
-
-	return result
+type SummaryResult struct {
+    Company string
+    Summary string
+    Err     error
 }
 
 func main() {
+    resp, err := askOllama("Explain what a stock is in 2 sentence")
+    fmt.Println(resp)
+
 	config, err := loadConfig("config/watchlist.yaml")
 	if err != nil {
 		log.Fatal(err)
@@ -150,27 +50,80 @@ func main() {
     wg.Wait()
 
 	allArticles = deduplicateArticles(allArticles)
+    allArticles = filterRecentArticles(allArticles, 24 * time.Hour)
+    groupedArticles := groupByCompany(allArticles)
 
-	fmt.Printf(
-		"\nFound %d unique articles\n\n",
-		len(allArticles),
-	)
+    const ollamaWorkers = 3
+    jobs := make(chan string)
+    results := make(chan SummaryResult)
 
-	for _, article := range allArticles {
+    var ollamaWG sync.WaitGroup
+
+    for i := 0; i < ollamaWorkers; i++ {
+        ollamaWG.Add(1)
+		go func(workerID int) {
+			defer ollamaWG.Done()
+
+			for company := range jobs {
+				fmt.Printf(
+					"[Worker %d] Summarizing %s...\n",
+					workerID,
+					company,
+				)
+
+				articles := groupedArticles[company]
+
+				sortByDate(articles)
+				articles = limitArticles(
+					articles,
+					5,
+				)
+
+				summary, err := summarizeWithOllama(
+					company,
+					articles,
+				)
+
+				results <- SummaryResult{
+					Company: company,
+					Summary: summary,
+					Err:     err,
+				}
+			}
+		}(i + 1)
+
+    }
+
+	go func() {
+		for company := range groupedArticles {
+			jobs <- company
+		}
+
+		close(jobs)
+	}()
+
+	go func() {
+		ollamaWG.Wait()
+		close(results)
+	}()
+
+    for result := range results {
+		if result.Err != nil {
+			log.Printf(
+				"failed to summarize %s: %v",
+				result.Company,
+				result.Err,
+			)
+			continue
+		}
+
 		fmt.Printf(
-			"Company: %s\n"+
-				"Title: %s\n"+
-				"Source: %s\n"+
-				"Source URL: %s\n"+
-				"Article URL: %s\n"+
-				"Published: %s\n"+
-				"----------------------------------------\n",
-			article.Company,
-			article.Title,
-			article.Source,
-			article.SourceURL,
-			article.URL,
-			article.PublishedAt.Format(time.RFC3339),
+			"\n================================\n"+
+				"%s\n"+
+				"================================\n"+
+				"%s\n",
+			result.Company,
+			result.Summary,
 		)
-	}
+    }
 }
