@@ -9,6 +9,17 @@ import (
 
 type Config struct {
 	Companies []string `yaml:"companies"`
+	Scraping ScrapingConfig `yaml:"scraping"`
+	Ollama   OllamaConfig   `yaml:"ollama"`
+}
+
+type ScrapingConfig struct {
+	ArticleCount int `yaml:"article_count"`
+}
+
+type OllamaConfig struct {
+	Model   string `yaml:"model"`
+	Workers int    `yaml:"workers"`
 }
 
 func loadConfig(path string) (Config, error) {
@@ -28,6 +39,20 @@ func loadConfig(path string) (Config, error) {
 			"watchlist contains no companies",
 		)
 	}
+
+
+	if config.Scraping.ArticleCount <= 0 {
+		config.Scraping.ArticleCount = 5
+	}
+
+	if config.Ollama.Model == "" {
+		config.Ollama.Model = "llama3.2"
+	}
+
+	if config.Ollama.Workers <= 0 {
+		config.Ollama.Workers = 3
+	}
+
 
 	return config, nil
 }

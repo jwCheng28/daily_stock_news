@@ -14,10 +14,7 @@ type SummaryResult struct {
 }
 
 func main() {
-    resp, err := askOllama("Explain what a stock is in 2 sentence")
-    fmt.Println(resp)
-
-	config, err := loadConfig("config/watchlist.yaml")
+	config, err := loadConfig("config/summarizer.yaml")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -53,7 +50,7 @@ func main() {
     allArticles = filterRecentArticles(allArticles, 24 * time.Hour)
     groupedArticles := groupByCompany(allArticles)
 
-    const ollamaWorkers = 3
+    ollamaWorkers := config.Ollama.Workers
     jobs := make(chan string)
     results := make(chan SummaryResult)
 
@@ -76,10 +73,11 @@ func main() {
 				sortByDate(articles)
 				articles = limitArticles(
 					articles,
-					5,
+					config.Scraping.ArticleCount,
 				)
 
 				summary, err := summarizeWithOllama(
+                    config.Ollama.Model,
 					company,
 					articles,
 				)

@@ -61,7 +61,7 @@ go run .
 
 The companies tracked by the application are defined in:
 ```
-config/watchlist.yaml
+config/summarizer.yaml
 ```
 Example:
 ```yaml
@@ -74,8 +74,40 @@ companies:
   - AMD
   - Meta
   - Google
+
+scraping:
+  article_count: 5
+
+ollama:
+  model: llama3.2
+  workers: 3
+```
+### Companies
+
+The companies list determines which companies the application searches for.
+```yaml
+companies:
+  - Nvidia
+  - Apple
+  - Tesla
 ```
 You can add or remove companies without modifying the Go code.
+
+### Article Count
+```yaml
+scraping:
+  article_count: 5
+```
+Controls the maximum number of articles sent to Ollama for each company.
+### Ollama
+```yaml
+ollama:
+  model: llama3.2
+  workers: 3
+```
+model: Controls which locally installed Ollama model is used for summarization.
+
+workers: Controls the maximum number of simultaneous Ollama requests.
 
 ## Future Improvements
 
@@ -84,7 +116,6 @@ Potential improvements include:
 - Support for additional news sources.
 - Better article relevance filtering.
 - Tracking previously processed articles.
-- Configurable Ollama models.
 - Streaming Ollama responses.
 - Scheduled/periodic news collection.
 - More sophisticated financial sentiment analysis.

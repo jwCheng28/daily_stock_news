@@ -20,6 +20,7 @@ type OllamaResponse struct {
 }
 
 func summarizeWithOllama(
+    model string,
     company string,
     articles []Article,
 ) (string, error) {
@@ -46,11 +47,11 @@ func summarizeWithOllama(
 		)
 	}
 
-	return askOllama(prompt.String())
+	return askOllama(model, prompt.String())
 }
-func askOllama(prompt string) (string, error) {
+func askOllama(model string, prompt string) (string, error) {
 	requestBody := OllamaRequest{
-		Model:  "llama3.2",
+		Model:  model,
 		Prompt: prompt,
 		Stream: false,
 	}

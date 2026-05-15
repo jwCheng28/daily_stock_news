@@ -1,0 +1,13 @@
+companies:
+  - Apple
+  - Microsoft
+  - Nvidia
+  - Tesla
+  - Amazon
+
+scraping:
+    article_count: 8
+
+ollama:
+    model: llama3.2
+    workers: 4
